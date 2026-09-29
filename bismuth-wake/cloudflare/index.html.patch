@@ -1,0 +1,11 @@
+--- a/public/index.html
++++ b/public/index.html
+@@ -500,7 +500,7 @@
+       <p class="hero-desc decode-block tone-muted scroll-decode" id="heroDesc" data-segments='[{"text":"Hosters run the server on their own machine. "},{"text":"We relay the connection.","bold":true},{"text":" Users just join — no port forwarding, no rented box."}]'>Hosters run the server on their own machine. <strong>We relay the connection.</strong> Users just join — no port forwarding, no rented box.</p>
+ 
+       <div class="hero-cta-row">
+-        <a class="btn btn-solid" href="/app" style="display:inline-block;">Deploy Server</a>
++        <a class="btn btn-solid" href="/app" style="display:inline-block;" onclick="try{navigator.sendBeacon('/__bismuth/wake')}catch(e){}">Deploy Server</a>
+         <div class="free-note"><b>$0</b> forever — no tiers, no card, no catch.</div>
+       </div>
+     </div>

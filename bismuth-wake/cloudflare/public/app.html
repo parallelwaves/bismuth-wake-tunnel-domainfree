@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>bismuth — deploy</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:#0a0a0b; --text:#e4e4e6; --muted:#86868c; --border:#212124;
+  --border2:#2f2f33; --accent:#c0f242; --accent-dim:#7fa82e;
+  --surface:#0d0d0f; --surface2:#131315;
+  --font:'IBM Plex Mono',ui-monospace,monospace;
+  --fs:15px; --fs-sm:13px; --fs-xs:11.5px;
+  --sidebar-w:216px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--font);font-size:var(--fs);background:var(--bg);color:var(--text);line-height:1.55}
+a{color:var(--accent);text-decoration:none}
+button,.btn{
+  font-family:inherit;font-size:var(--fs-sm);background:transparent;color:var(--text);
+  border:1px solid var(--border2);padding:9px 16px;cursor:pointer;border-radius:2px;
+}
+button:hover{border-color:var(--text)}
+button:disabled{opacity:.35;cursor:not-allowed}
+button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600}
+button.primary:hover{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--bg)}
+button.danger:hover{border-color:#f87171;color:#f87171}
+button.sm{padding:5px 10px;font-size:var(--fs-xs)}
+input,select{
+  font-family:inherit;font-size:var(--fs-sm);background:var(--bg);color:var(--text);
+  border:1px solid var(--border2);padding:9px 11px;width:100%;border-radius:2px;
+}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+label{font-size:var(--fs-sm)}
+
+#gate{
+  position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50
+}
+#gate .box{border:1px solid var(--border2);background:var(--surface);padding:44px;text-align:center;max-width:440px}
+#gate h1{font-size:19px;margin-bottom:10px}
+#gate p{color:var(--muted);font-size:var(--fs-sm);margin-bottom:22px;line-height:1.65}
+#gate .setup-warn{
+  border:1px solid #e8b84a;background:color-mix(in srgb,#e8b84a 10%,var(--surface));
+  color:#e8b84a;font-size:var(--fs-xs);padding:12px 14px;text-align:left;margin-top:20px;line-height:1.6;
+  word-break:break-all;
+}
+#gate .err-banner{
+  border:1px solid #f87171;background:color-mix(in srgb,#f87171 10%,var(--surface));
+  color:#f87171;font-size:var(--fs-xs);padding:12px 14px;text-align:left;margin-top:16px;line-height:1.6;
+}
+
+#wizard{
+  position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:45;
+  padding:24px;overflow-y:auto
+}
+.wiz-box{border:1px solid var(--border2);background:var(--surface);padding:38px 40px;max-width:520px;width:100%}
+.wiz-head h1{font-size:19px;margin-bottom:6px}
+.wiz-head p{color:var(--muted);font-size:var(--fs-sm);margin-bottom:18px}
+.wiz-dots{display:flex;gap:6px;margin-bottom:26px}
+.wiz-dot{height:3px;flex:1;background:var(--border2);border-radius:2px}
+.wiz-dot.active{background:var(--accent)}
+.wiz-step .lbl{color:var(--muted);font-size:var(--fs-xs);text-transform:uppercase;margin-bottom:6px}
+.wiz-loader-grid{display:flex;flex-direction:column;gap:8px}
+.wiz-loader-opt{
+  display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border2);padding:11px 13px;cursor:pointer;border-radius:2px
+}
+.wiz-loader-opt:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
+.wiz-loader-opt input{width:auto;margin-top:3px}
+.wiz-loader-opt div{display:flex;flex-direction:column;gap:2px}
+.wiz-loader-opt span{color:var(--muted);font-size:var(--fs-xs);line-height:1.5}
+.wiz-summary{margin-top:20px;border:1px solid var(--border);padding:13px 15px;font-size:var(--fs-sm);color:var(--muted);line-height:1.9}
+.wiz-summary b{color:var(--text);font-weight:600}
+.wiz-nav{display:flex;gap:10px;margin-top:26px;align-items:center}
+
+.shell{min-height:100vh;display:flex;flex-direction:column}
+header{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;
+  padding:16px 26px;border-bottom:1px solid var(--border);background:var(--surface)
+}
+.brand{font-weight:600;font-size:16px;display:flex;align-items:center;gap:9px;color:var(--text)}
+.brand svg{width:18px;height:18px}
+.meta{color:var(--muted);font-size:var(--fs-xs);display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block}
+.dot.on{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+
+.app-body{flex:1;display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:0}
+.sidenav{
+  border-right:1px solid var(--border);background:var(--surface);padding:18px 10px;
+  display:flex;flex-direction:column;gap:2px;
+}
+.sidenav button{
+  border:none;background:transparent;color:var(--muted);text-align:left;
+  padding:11px 14px;font-size:var(--fs-sm);border-radius:3px;display:flex;align-items:center;gap:10px;
+}
+.sidenav button svg{width:15px;height:15px;flex:none;opacity:.85}
+.sidenav button:hover{color:var(--text);background:var(--surface2)}
+.sidenav button.active{color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--surface2));font-weight:600}
+
+.content-scroll{overflow-y:auto;display:flex;justify-content:center;padding:28px 20px 48px}
+.panel{width:100%;max-width:860px;display:flex;flex-direction:column;gap:18px}
+
+.row{display:flex;gap:14px;flex-wrap:wrap}
+.card{background:var(--surface);border:1px solid var(--border);padding:16px 18px;flex:1;min-width:150px}
+.card .label{color:var(--muted);font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px}
+.card .value{font-size:19px;font-weight:500}
+
+.chart-wrap{background:var(--surface);border:1px solid var(--border);padding:16px 18px;flex:1;min-width:280px}
+.chart-wrap h3{font-size:var(--fs-xs);color:var(--muted);font-weight:500;margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em}
+.chart-box{height:130px}
+
+.console{
+  background:#070708;border:1px solid var(--border);min-height:320px;max-height:55vh;
+  overflow-y:auto;padding:13px 15px;font-size:var(--fs-sm)
+}
+.console .line{white-space:pre-wrap;word-break:break-all;display:flex;gap:9px}
+.console .ts{color:#4c4c52;flex:none}
+.console .info{color:var(--text)}
+.console .success{color:var(--accent)}
+.console .warn{color:#e8b84a}
+.console .error{color:#f87171}
+.console .cmd{color:#7dd3fc}
+.console .join{color:#86efac;font-weight:600}
+.console .leave{color:#fca5a5;font-weight:600}
+
+.cmd-bar{display:flex;gap:8px}
+.cmd-bar input{flex:1}
+
+.dropzone{
+  border:2px dashed var(--border2);background:var(--surface);padding:44px 24px;
+  text-align:center;cursor:pointer;transition:border-color .15s,background .15s
+}
+.dropzone:hover,.dropzone.drag{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
+.dropzone .big{font-size:16px;font-weight:600;margin-bottom:7px}
+.dropzone .sub{color:var(--muted);font-size:var(--fs-sm)}
+
+.claim{
+  border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--surface));
+  padding:13px 15px;font-size:var(--fs-sm);line-height:1.6
+}
+.claim a{word-break:break-all}
+.banner{
+  border:1px solid #e8b84a;background:color-mix(in srgb,#e8b84a 8%,var(--surface));
+  color:#e8b84a;padding:12px 15px;font-size:var(--fs-sm);line-height:1.6
+}
+.banner.err{border-color:#f87171;background:color-mix(in srgb,#f87171 8%,var(--surface));color:#f87171}
+.hidden{display:none!important}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+th{color:var(--muted);font-weight:500;font-size:var(--fs-xs);text-transform:uppercase}
+.actions-cell{display:flex;gap:6px;flex-wrap:wrap}
+
+.footer{
+  border-top:1px solid var(--border);padding:9px 26px;font-size:var(--fs-xs);color:var(--muted);
+  display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px
+}
+
+.version-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.version-row label{flex:1;min-width:150px}
+.version-row .lbl{color:var(--muted);font-size:var(--fs-xs);margin-bottom:5px;text-transform:uppercase}
+.loader-note{color:var(--muted);font-size:var(--fs-xs);line-height:1.7;margin-top:14px;max-width:600px}
+.loader-note code{color:var(--accent)}
+
+.props-grid{max-width:460px;display:flex;flex-direction:column;gap:13px}
+.props-grid .lbl{color:var(--muted);font-size:var(--fs-xs);text-transform:uppercase;margin-bottom:5px}
+.props-grid .checks{display:flex;gap:20px;flex-wrap:wrap}
+.props-grid .checks label{display:flex;align-items:center;gap:8px}
+.props-grid .checks input{width:auto}
+.props-note{color:var(--muted);font-size:var(--fs-xs);line-height:1.6}
+
+h2.section-title{font-size:var(--fs-sm);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:500;margin-bottom:10px}
+
+.mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.mod-card{
+  border:1px solid var(--border);background:var(--surface);padding:13px 14px;
+  display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden
+}
+.mod-card.core{border-color:color-mix(in srgb,var(--accent) 40%,var(--border2))}
+.mod-card .name{font-size:var(--fs-sm);font-weight:600;word-break:break-all;padding-right:18px}
+.mod-card .size{color:var(--muted);font-size:var(--fs-xs)}
+.mod-card .badge{
+  font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);
+  display:inline-flex;align-items:center;gap:4px;width:fit-content
+}
+.mod-card .lock{position:absolute;top:12px;right:12px;color:var(--accent-dim);font-size:13px}
+.mod-card button{align-self:flex-start}
+@keyframes popin{from{opacity:0;transform:scale(.94) translateY(4px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.mod-card.new{animation:popin .45s ease;box-shadow:0 0 0 1px var(--accent)}
+.upload-card{border:1px solid var(--border2);background:var(--surface);padding:13px 14px}
+.upload-card .name{font-size:var(--fs-sm);margin-bottom:8px;word-break:break-all}
+.progress-track{height:5px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.progress-fill{height:100%;background:var(--accent);width:0%;transition:width .15s}
+.upload-card .status{font-size:var(--fs-xs);color:var(--muted);margin-top:6px}
+.upload-card.fail .status{color:#f87171}
+.upload-card.ok .status{color:var(--accent)}
+
+.manual-player{display:flex;gap:8px;flex-wrap:wrap;max-width:460px}
+.manual-player select{flex:none;width:auto;min-width:140px}
+.manual-player input{flex:1;min-width:140px}
+
+@media(max-width:880px){
+  .app-body{grid-template-columns:1fr}
+  .sidenav{
+    flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border);
+    padding:8px 12px;gap:4px;
+  }
+  .sidenav button{white-space:nowrap}
+  .content-scroll{padding:16px 14px 32px}
+}
+</style>
+</head>
+<body>
+<div id="gate">
+  <div class="box">
+    <h1>sign in to deploy</h1>
+    <p>Discord account required before starting a server.</p>
+    <a class="btn primary" id="gate-login" href="/auth/discord" style="display:inline-block;padding:11px 24px">Login with Discord</a>
+    <p style="margin-top:20px;font-size:var(--fs-xs);opacity:.7">dev: <code>window.__bypass=true;location.reload()</code></p>
+    <div id="gate-setup-warn" class="setup-warn hidden"></div>
+    <div id="gate-err" class="err-banner hidden"></div>
+  </div>
+</div>
+
+<div id="wizard" class="hidden">
+  <div class="wiz-box">
+    <div class="wiz-head">
+      <h1>set up your world</h1>
+      <p>this only happens once — you can change any of this later in the dashboard</p>
+      <div class="wiz-dots">
+        <span class="wiz-dot active" data-step="1"></span>
+        <span class="wiz-dot" data-step="2"></span>
+        <span class="wiz-dot" data-step="3"></span>
+      </div>
+    </div>
+
+    <div class="wiz-step" data-step="1">
+      <div class="lbl">world name</div>
+      <input id="wiz-name" value="my world" maxlength="32"/>
+      <div class="lbl" style="margin-top:16px">minecraft version</div>
+      <select id="wiz-version"></select>
+      <div class="lbl" style="margin-top:16px">loader</div>
+      <div class="wiz-loader-grid">
+        <label class="wiz-loader-opt">
+          <input type="radio" name="wiz-loader" value="fabric" checked/>
+          <div><strong>fabric — optimized</strong><span>auto-installs the locked performance-mod pack (Lithium, FerriteCore, C2ME, and more) tuned for ~4 players under 2GB</span></div>
+        </label>
+        <label class="wiz-loader-opt">
+          <input type="radio" name="wiz-loader" value="paper"/>
+          <div><strong>paper</strong><span>plugin support, no Fabric mods, good default for most versions</span></div>
+        </label>
+        <label class="wiz-loader-opt">
+          <input type="radio" name="wiz-loader" value="vanilla"/>
+          <div><strong>vanilla</strong><span>no mods or plugins — best for very old versions like 1.12.2/1.8.9</span></div>
+        </label>
+      </div>
+    </div>
+
+    <div class="wiz-step hidden" data-step="2">
+      <div class="lbl">gamemode</div>
+      <select id="wiz-gamemode">
+        <option value="survival" selected>survival</option>
+        <option value="creative">creative</option>
+        <option value="adventure">adventure</option>
+        <option value="spectator">spectator</option>
+      </select>
+      <div class="lbl" style="margin-top:16px">difficulty</div>
+      <select id="wiz-difficulty">
+        <option value="peaceful">peaceful</option>
+        <option value="easy">easy</option>
+        <option value="normal" selected>normal</option>
+        <option value="hard">hard</option>
+      </select>
+      <div class="lbl" style="margin-top:16px">max players</div>
+      <input type="number" id="wiz-maxplayers" value="20" min="1" max="200"/>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:16px">
+        <input type="checkbox" id="wiz-online" checked style="width:auto"/>
+        <span>online-mode <span style="color:var(--muted)">— off lets cracked/offline clients join, useful for quick friend testing</span></span>
+      </label>
+    </div>
+
+    <div class="wiz-step hidden" data-step="3">
+      <div class="lbl">server message (motd)</div>
+      <input id="wiz-motd" value="powered by Bismuth" maxlength="200"/>
+      <div class="wiz-summary" id="wiz-summary"></div>
+    </div>
+
+    <div class="wiz-nav">
+      <button id="wiz-back" class="hidden">back</button>
+      <div style="flex:1"></div>
+      <button id="wiz-next" class="primary">next</button>
+      <button id="wiz-finish" class="primary hidden">create world</button>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<header>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <a href="/" class="brand">
+      <svg viewBox="0 0 32 32"><path d="M16 4 L26 10 V22 L16 28 L6 22 V10 Z" fill="none" stroke="var(--accent)" stroke-width="2"/></svg>
+      bismuth
+    </a>
+    <span class="meta">
+      <span><span class="dot" id="status-dot"></span> <span id="status-text">offline</span></span>
+      <span id="owner-label" class="hidden"></span>
+      <span id="ver-label">—</span>
+      <span id="addr-wrap" class="hidden">join <code id="public-addr">—</code></span>
+    </span>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span id="user-label" class="meta"></span>
+    <button id="btn-start" class="primary">start server</button>
+    <button id="btn-stop" disabled>stop</button>
+    <button id="btn-restart" disabled>restart</button>
+    <a href="/auth/logout" class="btn">logout</a>
+  </div>
+</header>
+
+<div class="app-body">
+  <nav class="sidenav">
+    <button class="active" data-tab="dash">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+      dashboard
+    </button>
+    <button data-tab="console">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M7 9l3 3-3 3M13 15h4"/></svg>
+      console
+    </button>
+    <button data-tab="players">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      players
+    </button>
+    <button data-tab="mods">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>
+      mods
+    </button>
+    <button data-tab="version">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      version
+    </button>
+    <button data-tab="props">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+      properties
+    </button>
+  </nav>
+
+  <div class="content-scroll">
+    <div class="panel">
+      <div id="claim-banner" class="claim hidden">
+        <strong>playit claim link</strong> — open once to link the agent:<br/>
+        <a id="claim-url" href="#" target="_blank" rel="noopener"></a>
+      </div>
+      <div id="app-banner" class="banner hidden"></div>
+
+      <section id="tab-dash">
+        <div class="row">
+          <div class="card"><div class="label">uptime</div><div class="value" id="m-uptime">00:00:00</div></div>
+          <div class="card"><div class="label">players</div><div class="value" id="m-players">0 / 20</div></div>
+          <div class="card"><div class="label">idle</div><div class="value" id="m-idle">—</div></div>
+          <div class="card"><div class="label">tunnel</div><div class="value" id="m-tunnel">off</div></div>
+        </div>
+        <div class="row">
+          <div class="chart-wrap">
+            <h3>cpu — <span id="m-cpu">0%</span></h3>
+            <div class="chart-box"><canvas id="chart-cpu"></canvas></div>
+          </div>
+          <div class="chart-wrap">
+            <h3>ram — <span id="m-ram">0%</span></h3>
+            <div class="chart-box"><canvas id="chart-ram"></canvas></div>
+          </div>
+        </div>
+        <div>
+          <h2 class="section-title">recent console</h2>
+          <div class="console" id="mini-console" style="min-height:180px;max-height:220px"></div>
+        </div>
+      </section>
+
+      <section id="tab-console" class="hidden">
+        <div class="console" id="full-console" style="min-height:420px;max-height:65vh"></div>
+        <div class="cmd-bar" style="margin-top:12px">
+          <input id="cmd-input" placeholder="type a command and press enter…" autocomplete="off"/>
+          <button id="cmd-send" class="primary">send</button>
+        </div>
+      </section>
+
+      <section id="tab-players" class="hidden">
+        <h2 class="section-title">online — <span id="online-count">0</span></h2>
+        <table style="margin-bottom:24px">
+          <thead><tr><th>name</th><th>for</th><th>actions</th></tr></thead>
+          <tbody id="online-body"></tbody>
+        </table>
+        <div class="row">
+          <div style="flex:1;min-width:200px">
+            <h2 class="section-title">operators</h2>
+            <table><tbody id="ops-body"></tbody></table>
+          </div>
+          <div style="flex:1;min-width:200px">
+            <h2 class="section-title">banned</h2>
+            <table><tbody id="banned-body"></tbody></table>
+          </div>
+          <div style="flex:1;min-width:200px">
+            <h2 class="section-title">whitelist</h2>
+            <table><tbody id="whitelist-body"></tbody></table>
+          </div>
+        </div>
+        <div style="margin-top:22px">
+          <h2 class="section-title">manage a player</h2>
+          <div class="manual-player">
+            <input id="pm-name" placeholder="username" maxlength="16"/>
+            <select id="pm-action">
+              <option value="op">op</option>
+              <option value="deop">deop</option>
+              <option value="kick">kick</option>
+              <option value="ban">ban</option>
+              <option value="pardon">unban</option>
+              <option value="whitelist-add">whitelist add</option>
+              <option value="whitelist-remove">whitelist remove</option>
+            </select>
+            <button id="pm-go" class="primary">go</button>
+          </div>
+          <p class="props-note" style="margin-top:8px">runs through the live console, so the server needs to be running.</p>
+        </div>
+      </section>
+
+      <section id="tab-mods" class="hidden">
+        <div class="dropzone" id="dropzone">
+          <div class="big">drop mods here</div>
+          <div class="sub">.jar / .zip, up to 512MB each — click or drag into this box</div>
+          <input type="file" id="mod-file" accept=".jar,.zip" multiple hidden/>
+        </div>
+        <div id="upload-list" style="display:flex;flex-direction:column;gap:8px;margin-top:14px"></div>
+
+        <div id="core-mods-wrap" style="margin-top:22px" class="hidden">
+          <h2 class="section-title">optimization pack — locked on</h2>
+          <div class="mod-grid" id="core-mod-grid"></div>
+        </div>
+        <div style="margin-top:22px">
+          <h2 class="section-title">your mods</h2>
+          <div class="mod-grid" id="user-mod-grid"></div>
+        </div>
+      </section>
+
+      <section id="tab-version" class="hidden">
+        <p style="color:var(--muted);font-size:var(--fs-sm);margin-bottom:16px;line-height:1.65">
+          Pick a version and loader, then press <strong>start server</strong>. Changing version or loader re-downloads the jar.
+        </p>
+        <div class="version-row">
+          <label>
+            <div class="lbl">minecraft version</div>
+            <select id="sel-version"></select>
+          </label>
+          <label>
+            <div class="lbl">loader</div>
+            <select id="sel-loader">
+              <option value="fabric">fabric — optimized</option>
+              <option value="paper">paper</option>
+              <option value="vanilla">vanilla</option>
+            </select>
+          </label>
+          <button id="btn-apply-version" class="primary">use this version</button>
+        </div>
+        <p class="loader-note">
+          <strong>fabric — optimized</strong> auto-installs <code>Lithium</code>, <code>FerriteCore</code>, <code>ModernFix</code>,
+          <code>Krypton</code>, <code>Starlight</code>/<code>ScalableLux</code> and <code>C2ME</code>, and locks them on (mods tab
+          won't let you remove them). Together they're the standard vanilla-preserving stack for trimming RAM/CPU on small
+          servers, tuned here with <code>view-distance 8</code> / <code>simulation-distance 6</code> for ~4 players.
+          <code>C2ME</code> specifically parallelizes chunk generation/loading across CPU cores for faster exploration — its
+          one known quirk is that regenerating the same seed can produce very slightly different terrain run-to-run, since
+          generation order is no longer single-threaded; no gameplay mechanic changes, just how the terrain gets computed.
+          <code>paper</code>/<code>vanilla</code> don't support these mods (different mod format), so pick <code>fabric</code>
+          if you want them. Very old versions (pre-1.14) don't have Fabric builds — those fall back to Paper automatically.
+        </p>
+        <p style="color:var(--muted);font-size:var(--fs-xs);margin-top:14px">Current: <code id="cur-version">—</code></p>
+      </section>
+
+      <section id="tab-props" class="hidden">
+        <div class="props-grid">
+          <div><div class="lbl">motd</div>
+            <input id="p-motd" value="Bismuth Server"/></div>
+          <div><div class="lbl">difficulty</div>
+            <select id="p-diff"><option>peaceful</option><option>easy</option><option selected>normal</option><option>hard</option></select></div>
+          <div><div class="lbl">gamemode</div>
+            <select id="p-gm"><option selected>survival</option><option>creative</option><option>adventure</option><option>spectator</option></select></div>
+          <div><div class="lbl">max-players</div>
+            <input type="number" id="p-max" value="20" min="1" max="200"/></div>
+          <div class="checks">
+            <label><input type="checkbox" id="p-online" checked/> online-mode</label>
+            <label><input type="checkbox" id="p-pvp" checked/> pvp</label>
+            <label><input type="checkbox" id="p-whitelist"/> whitelist</label>
+          </div>
+          <div>
+            <button id="save-props" class="primary" style="align-self:flex-start">save properties</button>
+          </div>
+          <p class="props-note" id="props-note">difficulty, gamemode and whitelist apply live if the server is running. motd, max-players, online-mode and pvp need a restart.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <span>auto-stop · 2 min idle · playit starts with server</span>
+  <span id="ws-status">ws: …</span>
+</div>
+</div>
+
+<script>
+const HIST = 30;
+const cpuHist = Array(HIST).fill(0);
+const ramHist = Array(HIST).fill(0);
+let historySeeded = false;
+let selectedVersion = '1.21.1';
+let selectedLoader = 'fabric';
+let user = null;
+let setupComplete = false;
+
+/* ============================================================================
+   Bismuth gateway (Cloudflare) — wake the server early and wait for it patiently
+   ----------------------------------------------------------------------------
+   This page is served by Cloudflare, so it loads instantly even while the
+   Codespace is asleep. Opening it counts as "deploy": we ask the Worker to start
+   the Codespace right away — before login, while the user fills the wizard.
+   API calls that arrive while the machine is still booting are transparently
+   retried, and a live "launch console" keeps the screen moving while they wait.
+   ========================================================================== */
+const AUTO_LAUNCH_AFTER_SETUP = true;   // start Minecraft right after the first-time wizard
+const __rawFetch = window.fetch.bind(window);
+let __lastWake = 0, __waiting = 0;
+
+function __wake(){
+  if(Date.now() - __lastWake < 20000) return;
+  __lastWake = Date.now();
+  try{
+    __rawFetch('/__bismuth/wake', { method:'POST', keepalive:true })
+      .then(r => r.json())
+      .then(w => {
+        if(w && w.started) BootConsole.real('wake-up call accepted by GitHub','ok');
+        if(w && w.error === 'billing') BootConsole.real('GitHub Codespaces spending limit reached — cannot start the machine','err');
+        else if(w && w.error) BootConsole.real('could not start the machine ('+w.error+')','err');
+      })
+      .catch(()=>{});
+  }catch(e){}
+}
+
+window.fetch = async function(input, init){
+  const url = typeof input === 'string' ? input : ((input && input.url) || '');
+  if(!/^\/api\//.test(url)) return __rawFetch(input, init);
+  const t0 = Date.now();
+  let counted = false;
+  try{
+    for(;;){
+      const r = await __rawFetch(input, init);
+      if(!(r.status === 503 && r.headers.get('X-Bismuth-Asleep') === '1')) return r;
+      if(!counted){ counted = true; __waiting++; BootConsole.open('ready'); }
+      __wake();
+      if(Date.now() - t0 > 240000) return r;
+      await new Promise(res => setTimeout(res, 2500));
+    }
+  } finally {
+    if(counted) __waiting--;
+  }
+};
+
+let setupUnknown = false;          // true while the Codespace hasn't told us yet whether this account finished setup
+let setupResolved = Promise.resolve();
+function resolveSetupInBackground(){
+  setupResolved = (async()=>{
+    for(let i = 0; i < 120; i++){
+      await new Promise(r => setTimeout(r, 2500));
+      try{
+        const r = await __rawFetch('/api/me');
+        const d = await r.json();
+        if(typeof d.setupComplete === 'boolean'){
+          setupUnknown = false;
+          if(d.setupComplete){
+            setupComplete = true;
+            const w = document.getElementById('wizard');
+            if(!w.classList.contains('hidden')){
+              w.classList.add('hidden');
+              BootConsole.close();
+              appendLog('existing world found — using your saved settings','info');
+              initDashboard();
+            }
+          }
+          return;
+        }
+      }catch{}
+    }
+  })();
+}
+
+/* ============================================================================
+   Launch console — a live feed shown while the machine / Minecraft boot
+   ----------------------------------------------------------------------------
+   Two kinds of lines:
+     REAL lines   (● ✓ ✗ ›)  come from actual events: machine state from the
+                             Worker, and Minecraft's own console output.
+     FLAVOR lines (~)        are PLACEHOLDERS that fill the quiet gaps so the
+                             screen never freezes. They don't claim anything
+                             technical. Swap them for real hooks whenever you like.
+   >>> To change what the feed says, edit BOOT_FLAVOR and BOOT_TIPS below. <<<
+   ========================================================================== */
+const BOOT_FLAVOR = {
+  cloud: [
+    'asking the cloud very nicely for a machine…',
+    'waking the hamsters that power the servers…',
+    'unrolling a long extension cord to the datacenter…',
+    'polishing the CPU (it likes that)…',
+    'reticulating splines…',
+    'checking the weather in the cloud… it is cloudy',
+  ],
+  engine: [
+    'sorting the redstone by colour…',
+    'teaching the dashboard your name…',
+    'warming up the Bismuth engine…',
+    'stacking the item frames…',
+    'sharpening the pickaxes…',
+  ],
+  world: [
+    'unpacking the world seed…',
+    'counting creepers… there are too many',
+    'teaching the cows to spawn politely…',
+    'placing the bedrock, layer by layer…',
+    'hiding diamonds somewhere deep…',
+    'asking the villagers to please stop wandering off…',
+    'letting the sheep choose their colours…',
+  ],
+};
+const BOOT_TIPS = [
+  'tip: once the server is up you can type Minecraft commands straight into the console',
+  'tip: the server sleeps by itself 2 minutes after the last player leaves',
+  'tip: the Mods tab is where performance mods go',
+  'tip: pick a different version any time from the Version tab',
+];
+
+const BootConsole = (function(){
+  const PHASES = [
+    { id:'cloud',  label:'cloud machine',  from:0,  to:42, tau:45 },
+    { id:'engine', label:'bismuth engine', from:42, to:58, tau:8  },
+    { id:'world',  label:'minecraft',      from:58, to:97, tau:70 },
+  ];
+  const S = { open:false };
+
+  function h(tag, cls, text){
+    const e = document.createElement(tag);
+    if(cls) e.className = cls;
+    if(text != null) e.textContent = text;
+    return e;
+  }
+  function fmt(sec){ sec = Math.max(0, Math.round(sec)); return Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0'); }
+
+  function addCss(){
+    if(document.getElementById('bm-boot-css')) return;
+    const s = document.createElement('style');
+    s.id = 'bm-boot-css';
+    s.textContent = `
+      .bm-boot{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(8,8,9,.88);backdrop-filter:blur(6px);font-family:var(--font,ui-monospace,monospace)}
+      .bm-card{width:100%;max-width:580px;background:var(--surface,#0d0d0f);color:var(--text,#e4e4e6);border:1px solid var(--border,#212124);padding:20px 20px 16px}
+      .bm-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+      .bm-title{font-weight:600;font-size:15px}
+      .bm-hide{background:none;border:1px solid var(--border,#212124);color:var(--muted,#86868c);font:inherit;font-size:11px;padding:3px 9px;cursor:pointer}
+      .bm-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+      .bm-chip{font-size:11px;padding:3px 9px;border:1px solid var(--border,#212124);color:var(--muted,#86868c)}
+      .bm-chip.active{color:var(--text,#e4e4e6);border-color:var(--accent,#c0f242);animation:bmPulse 1.2s ease-in-out infinite}
+      .bm-chip.done{color:var(--accent,#c0f242);border-color:var(--accent,#c0f242)}
+      .bm-bar{height:3px;background:var(--border,#212124);margin-bottom:8px;overflow:hidden}
+      .bm-fill{height:100%;width:0;background:var(--accent,#c0f242);transition:width .35s ease-out}
+      .bm-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted,#86868c);margin-bottom:10px}
+      .bm-feed{height:230px;overflow:hidden;font-size:12px;line-height:1.65;border-top:1px solid var(--border,#212124);padding-top:10px}
+      .bm-l{display:flex;gap:8px;animation:bmIn .35s ease-out;white-space:pre-wrap;word-break:break-word}
+      .bm-t{color:var(--muted,#86868c);flex:none;min-width:38px;text-align:right}
+      .bm-g{flex:none;width:10px}
+      .bm-flavor{color:var(--muted,#86868c)}
+      .bm-tip{color:var(--muted,#86868c);font-style:italic}
+      .bm-ok .bm-g,.bm-ok .bm-m{color:var(--accent,#c0f242)}
+      .bm-info .bm-g{color:var(--accent,#c0f242)}
+      .bm-warn .bm-m,.bm-warn .bm-g{color:#e6b450}
+      .bm-err .bm-m,.bm-err .bm-g{color:#ff6b6b}
+      .bm-cur{display:inline-block;width:7px;height:13px;background:var(--accent,#c0f242);vertical-align:-2px;animation:bmBlink 1s steps(1) infinite}
+      @keyframes bmIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+      @keyframes bmPulse{50%{opacity:.45}}
+      @keyframes bmBlink{50%{opacity:0}}`;
+    document.head.appendChild(s);
+  }
+
+  function build(){
+    addCss();
+    const root = h('div','bm-boot'); root.id = 'bm-boot';
+    const card = h('div','bm-card');
+    const head = h('div','bm-head');
+    head.appendChild(h('span','bm-title','Launching your server'));
+    const hide = h('button','bm-hide','hide'); hide.onclick = () => close();
+    head.appendChild(hide);
+    const chips = h('div','bm-chips');
+    const chipEls = PHASES.map(p => { const c = h('span','bm-chip',p.label); chips.appendChild(c); return c; });
+    const bar = h('div','bm-bar'); const fill = h('div','bm-fill'); bar.appendChild(fill);
+    const meta = h('div','bm-meta');
+    const clock = h('span','','0:00');
+    meta.appendChild(clock);
+    meta.appendChild(h('span','','usually 1–3 minutes'));
+    const feed = h('div','bm-feed');
+    card.appendChild(head); card.appendChild(chips); card.appendChild(bar); card.appendChild(meta); card.appendChild(feed);
+    root.appendChild(card);
+    document.body.appendChild(root);
+    S.els = { root, fill, clock, feed, chipEls };
+  }
+
+  function line(text, kind){
+    if(!S.open || !S.els) return;
+    const sec = Math.round((Date.now() - S.t0) / 1000);
+    const glyph = { ok:'✓', err:'✗', mc:'›', flavor:'~', tip:'~', info:'●', warn:'!' }[kind] || '●';
+    const row = h('div','bm-l bm-' + kind);
+    row.appendChild(h('span','bm-t','+' + sec + 's'));
+    row.appendChild(h('span','bm-g',glyph));
+    row.appendChild(h('span','bm-m',String(text)));
+    const f = S.els.feed;
+    f.appendChild(row);
+    while(f.children.length > 40) f.removeChild(f.firstChild);
+    f.scrollTop = f.scrollHeight;
+    S.lastAt = Date.now();
+    S.nextGap = 1000 + Math.random() * 1500;
+  }
+
+  function flavor(){
+    S.n++;
+    const isTip = S.n % 5 === 0;
+    const key = isTip ? 'tip' : PHASES[S.phase].id;
+    const pool = isTip ? BOOT_TIPS : BOOT_FLAVOR[key];
+    const i = (S.cursor[key] = (S.cursor[key] == null ? Math.floor(Math.random() * pool.length) : S.cursor[key] + 1)) % pool.length;
+    line(pool[i], isTip ? 'tip' : 'flavor');
+  }
+
+  function setPhase(i){
+    if(!S.open || i <= S.phase) return;
+    S.phase = i;
+    S.pStart = Date.now();
+    S.pct = Math.max(S.pct, PHASES[i].from);
+  }
+
+  function render(){
+    const now = Date.now();
+    const p = PHASES[S.phase];
+    if(!S.done && !S.failed){
+      const target = p.from + (p.to - p.from) * (1 - Math.exp(-(now - S.pStart) / 1000 / p.tau));
+      S.pct = Math.max(S.pct, Math.min(target, p.to - 0.5));
+    }
+    S.els.fill.style.width = S.pct.toFixed(1) + '%';
+    S.els.clock.textContent = fmt((now - S.t0) / 1000);
+    S.els.chipEls.forEach((c, i) => {
+      c.className = 'bm-chip' + (S.done || i < S.phase ? ' done' : i === S.phase && !S.failed ? ' active' : '');
+    });
+  }
+
+  function tick(){
+    if(!S.open) return;
+    render();
+    if(S.done || S.failed) return;
+    const now = Date.now();
+    if(now - S.lastAt > S.nextGap) flavor();
+    if(!S.slowShown && now - S.t0 > 360000){
+      S.slowShown = true;
+      line('taking longer than usual — see "Getting the logs" in the README','warn');
+    }
+  }
+
+  function describe(s){
+    const st = s.state;
+    if(st === 'Shutdown') return line('cloud machine is asleep — sending the wake-up call','info');
+    if(st === 'ShuttingDown') return line('machine is still shutting down from earlier — waiting for it to finish','info');
+    if(st === 'NotFound') { S.failed = true; return line('Codespace not found — check CODESPACE_NAME / CODESPACE_REPO on the Worker','err'); }
+    if(st === 'AuthError') { S.failed = true; return line('GitHub rejected the token — check GH_TOKEN on the Worker','err'); }
+    if(['Failed','Deleted','Archived','Moved'].includes(st)) { S.failed = true; return line('Codespace is ' + String(st).toLowerCase() + ' — open GitHub → Codespaces to check it','err'); }
+    if(st === 'Available' && !s.ready){
+      if(s.reason === 'app_starting') line('waiting for the Cloudflare tunnel to connect…','info');
+      line('cloud machine is online','ok');
+      return line('starting the Bismuth engine…','info');
+    }
+    return line('cloud machine is booting…','info');
+  }
+
+  async function poll(){
+    if(!S.open || S.phase >= 2 || S.polling) return;
+    S.polling = true;
+    try{
+      const r = await __rawFetch('/__bismuth/status', { cache:'no-store' });
+      const s = await r.json();
+      if(!S.open) return;
+      const key = s.state + '|' + (s.ready ? 'ready' : (s.reason || ''));
+      if(key !== S.machine){ S.machine = key; if(!s.ready) describe(s); }
+      if(s.state === 'Available' && !s.ready) setPhase(1);
+      if(s.ready){
+        line('cloud machine online','ok');
+        line('Bismuth engine is answering','ok');
+        setPhase(2);
+        if(S.goal === 'ready') finish('ready');
+      }
+    }catch(e){ /* try again on the next poll */ }
+    finally{ S.polling = false; }
+  }
+
+  function finish(msg){
+    if(S.done) return;
+    S.done = true;
+    S.pct = 100;
+    line(msg, 'ok');
+    render();
+    S.closeTimer = setTimeout(close, 1400);
+  }
+
+  function open(goal){
+    if(S.open){ if(goal === 'online') S.goal = 'online'; return; }
+    Object.assign(S, { open:true, goal, phase:0, t0:Date.now(), pStart:Date.now(), pct:0, lastAt:Date.now(), nextGap:900,
+                       n:0, cursor:{}, machine:'', done:false, failed:false, slowShown:false, polling:false,
+                       mcCount:0, mcWindow:0, firstStatus:true, startedMC:false, closeTimer:null });
+    build();
+    line('launch sequence started','info');
+    render();
+    S.timer = setInterval(tick, 250);
+    S.pollTimer = setInterval(poll, 2500);
+    poll();
+  }
+
+  function close(){
+    if(!S.open) return;
+    S.open = false;
+    clearInterval(S.timer); clearInterval(S.pollTimer); clearTimeout(S.closeTimer);
+    if(S.els && S.els.root) S.els.root.remove();
+    S.els = null;
+  }
+
+  // Minecraft's own console lines (called from appendLog)
+  function mc(text, type){
+    if(!S.open || S.done) return;
+    text = String(text || '').trim();
+    if(!text) return;
+    const now = Date.now();
+    if(now - S.mcWindow > 1000){ S.mcWindow = now; S.mcCount = 0; }
+    const isErr = type === 'error';
+    if(++S.mcCount <= 8 || isErr){
+      line(text, isErr ? 'err' : type === 'warn' ? 'warn' : 'mc');
+    }
+    if(S.goal === 'online' && S.phase < 2) setPhase(2);
+    if(isErr) S.failed = true;
+    if(S.goal === 'online' && /Done \(\d/.test(text)) finish('server online — enjoy!');
+  }
+
+  // Status snapshots from the WebSocket (called from applyStatus)
+  function status(st){
+    if(!S.open || S.done || S.goal !== 'online') return;
+    if(S.firstStatus){
+      S.firstStatus = false;
+      if(st.running && (st.uptime || 0) > 30){ finish('your server is already online'); return; }
+    }
+    if(st.running && !S.startedMC){
+      S.startedMC = true;
+      line('Minecraft process started','ok');
+      setPhase(2);
+    }
+  }
+
+  return { open, close, real:(t,k)=>line(t, k || 'info'), mc, status, isOpen:()=>S.open, _state:S };
+})();
+
+__wake();   // opening the dashboard = "deploy": start booting now, even before login
+const recentlyUploaded = new Set();
+
+/* ---------- charts: deeper stroke, glow, gradient fill ---------- */
+function glowPlugin(color){
+  return {
+    id: 'glow-'+color,
+    beforeDatasetsDraw(chart){
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+    },
+    afterDatasetsDraw(chart){ chart.ctx.restore(); }
+  };
+}
+function makeChart(canvasId, stroke, glow, fillTop){
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: Array(HIST).fill(''),
+      datasets: [{
+        data: Array(HIST).fill(0),
+        borderColor: stroke,
+        borderWidth: 2.5,
+        backgroundColor(c){
+          const {ctx: cx, chartArea} = c.chart;
+          if(!chartArea) return fillTop;
+          const g = cx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          g.addColorStop(0, fillTop);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          return g;
+        },
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    },
+    plugins: [glowPlugin(glow)]
+  });
+}
+const cpuChart = makeChart('chart-cpu', '#5fae1f', 'rgba(192,242,66,0.55)', 'rgba(192,242,66,0.28)');
+const ramChart = makeChart('chart-ram', '#2f8fd1', 'rgba(125,211,252,0.55)', 'rgba(125,211,252,0.28)');
+
+function revealCharts(){
+  [[cpuChart, cpuHist], [ramChart, ramHist]].forEach(([chart, hist]) => {
+    const last = hist[hist.length - 1] || 0;
+    chart.data.datasets[0].data = Array(HIST).fill(last);
+    chart.options.animation = false;
+    chart.update('none');
+    requestAnimationFrame(() => {
+      chart.options.animation = { duration: 650, easing: 'easeOutCubic' };
+      chart.data.datasets[0].data = [...hist];
+      chart.update();
+      setTimeout(() => { chart.options.animation = false; }, 700);
+    });
+  });
+}
+
+async function checkAuth(){
+  if(window.__bypass){
+    document.getElementById('gate').classList.add('hidden');
+    document.getElementById('user-label').textContent='dev';
+    user={ id:'dev', username:'dev' };
+    try{
+      const r=await fetch('/api/me');
+      const d=await r.json();
+      setupComplete=!!d.setupComplete;
+    }catch{ setupComplete=true; }
+    return true;
+  }
+  try{
+    const r=await fetch('/api/me');
+    const d=await r.json();
+    user=d.user;
+    if(!d.discordConfigured){
+      const warn=document.getElementById('gate-setup-warn');
+      warn.textContent='Discord isn\'t configured yet. Set DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET in .env, then register this redirect URI in your Discord app: '+d.redirectUri;
+      warn.classList.remove('hidden');
+      document.getElementById('gate-login').style.pointerEvents='none';
+      document.getElementById('gate-login').style.opacity='.4';
+    }
+    const params=new URLSearchParams(location.search);
+    if(params.get('error')){
+      const err=document.getElementById('gate-err');
+      err.textContent='Login failed: '+params.get('error');
+      err.classList.remove('hidden');
+    }
+    if(user){
+      document.getElementById('gate').classList.add('hidden');
+      document.getElementById('user-label').textContent=user.global_name||user.username;
+      setupUnknown = (d.setupComplete === null || d.setupComplete === undefined);
+      setupComplete = setupUnknown ? false : !!d.setupComplete;
+      return true;
+    }
+  }catch{}
+  return false;
+}
+
+document.querySelectorAll('.sidenav button').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.sidenav button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.panel > section').forEach(s=>s.classList.add('hidden'));
+    document.getElementById('tab-'+btn.dataset.tab).classList.remove('hidden');
+    if(btn.dataset.tab==='dash') revealCharts();
+    if(btn.dataset.tab==='props') loadProperties();
+    if(btn.dataset.tab==='mods') loadMods();
+    if(btn.dataset.tab==='players') loadPlayers();
+  });
+});
+
+function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function appendLog(line,type='info',time){
+  if(BootConsole.isOpen()) BootConsole.mc(line,type);
+  const ts = time || new Date().toTimeString().slice(0,8);
+  const html=`<div class="line ${type}"><span class="ts">${ts}</span><span>${escapeHtml(line)}</span></div>`;
+  const full=document.getElementById('full-console');
+  const mini=document.getElementById('mini-console');
+  full.insertAdjacentHTML('beforeend',html);
+  mini.insertAdjacentHTML('beforeend',html);
+  full.scrollTop=full.scrollHeight;
+  mini.scrollTop=mini.scrollHeight;
+  while(mini.children.length>14) mini.removeChild(mini.firstChild);
+  while(full.children.length>800) full.removeChild(full.firstChild);
+}
+
+function fmtUptime(sec){
+  const h=String(Math.floor(sec/3600)).padStart(2,'0');
+  const m=String(Math.floor((sec%3600)/60)).padStart(2,'0');
+  const s=String(sec%60).padStart(2,'0');
+  return `${h}:${m}:${s}`;
+}
+
+function applyStatus(st){
+  BootConsole.status(st);
+  const on=!!st.running;
+  const mine = on && user && st.ownerName && (user.global_name||user.username)===st.ownerName;
+  const blocked = on && !mine && !window.__bypass;
+  document.getElementById('status-dot').classList.toggle('on',on);
+  document.getElementById('status-text').textContent=on?'online':'offline';
+  document.getElementById('btn-start').disabled = on;
+  document.getElementById('btn-stop').disabled = !on || blocked;
+  document.getElementById('btn-restart').disabled = !on || blocked;
+  const ownerLabel=document.getElementById('owner-label');
+  if(on && st.ownerName){
+    ownerLabel.textContent = blocked ? `(${st.ownerName}'s server)` : 'your server';
+    ownerLabel.classList.remove('hidden');
+  } else {
+    ownerLabel.classList.add('hidden');
+  }
+  document.getElementById('m-uptime').textContent=fmtUptime(st.uptime||0);
+  document.getElementById('m-players').textContent=`${st.players||0} / ${st.maxPlayers||20}`;
+  document.getElementById('m-tunnel').textContent=st.tunnelRunning?'on':'off';
+  document.getElementById('m-cpu').textContent=(st.cpu||0)+'%';
+  document.getElementById('m-ram').textContent=(st.ram||0)+'% · '+(st.ramUsedMb||0)+'MB';
+  if(st.version) document.getElementById('ver-label').textContent=`${st.loader||''} ${st.version}`;
+  if(st.version) document.getElementById('cur-version').textContent=`${st.loader} ${st.version}`;
+
+  if(!historySeeded && Array.isArray(st.cpuHistory) && st.cpuHistory.length===HIST){
+    cpuHist.splice(0, HIST, ...st.cpuHistory);
+    ramHist.splice(0, HIST, ...st.ramHistory);
+    historySeeded = true;
+  } else {
+    cpuHist.push(st.cpu||0); cpuHist.shift();
+    ramHist.push(st.ram||0); ramHist.shift();
+  }
+  const dashVisible = !document.getElementById('tab-dash').classList.contains('hidden');
+  if(dashVisible){
+    cpuChart.data.datasets[0].data=[...cpuHist];
+    ramChart.data.datasets[0].data=[...ramHist];
+    cpuChart.update('none'); ramChart.update('none');
+  }
+
+  if(st.idleRemaining!=null){
+    document.getElementById('m-idle').textContent=st.idleRemaining+'s';
+    document.getElementById('m-idle').style.color=st.idleRemaining<30?'#f87171':'var(--text)';
+  } else {
+    document.getElementById('m-idle').textContent=on?'active':'—';
+  }
+  if(st.publicAddress){
+    document.getElementById('addr-wrap').classList.remove('hidden');
+    document.getElementById('public-addr').textContent=st.publicAddress;
+  }
+  if(st.claimUrl){
+    document.getElementById('claim-banner').classList.remove('hidden');
+    const a=document.getElementById('claim-url');
+    a.href=st.claimUrl; a.textContent=st.claimUrl;
+  } else {
+    document.getElementById('claim-banner').classList.add('hidden');
+  }
+}
+
+function renderPlayers(d){
+  document.getElementById('online-count').textContent=d.online.length;
+  document.getElementById('online-body').innerHTML = d.online.length ? d.online.map(p=>`
+    <tr>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${fmtUptime(Math.max(0,Math.floor((Date.now()-p.joinedAt)/1000)))}</td>
+      <td class="actions-cell">
+        <button class="sm" data-act="op" data-name="${escapeHtml(p.name)}">op</button>
+        <button class="sm" data-act="kick" data-name="${escapeHtml(p.name)}">kick</button>
+        <button class="sm danger" data-act="ban" data-name="${escapeHtml(p.name)}">ban</button>
+      </td>
+    </tr>`).join('') : '<tr><td colspan="3" style="color:var(--muted)">no one online</td></tr>';
+
+  document.getElementById('ops-body').innerHTML = d.ops.length ? d.ops.map(n=>`
+    <tr><td>${escapeHtml(n)}</td><td><button class="sm" data-act="deop" data-name="${escapeHtml(n)}">deop</button></td></tr>
+  `).join('') : '<tr><td style="color:var(--muted)">none</td></tr>';
+
+  document.getElementById('banned-body').innerHTML = d.banned.length ? d.banned.map(b=>`
+    <tr><td>${escapeHtml(b.name)}</td><td><button class="sm" data-act="pardon" data-name="${escapeHtml(b.name)}">unban</button></td></tr>
+  `).join('') : '<tr><td style="color:var(--muted)">none</td></tr>';
+
+  document.getElementById('whitelist-body').innerHTML = d.whitelist.length ? d.whitelist.map(n=>`
+    <tr><td>${escapeHtml(n)}</td><td><button class="sm" data-act="whitelist-remove" data-name="${escapeHtml(n)}">remove</button></td></tr>
+  `).join('') : '<tr><td style="color:var(--muted)">empty</td></tr>';
+
+  document.querySelectorAll('#tab-players [data-act]').forEach(b=>{
+    b.onclick=()=>playerAction(b.dataset.name, b.dataset.act);
+  });
+}
+async function loadPlayers(){
+  try{ renderPlayers(await api('/api/players')); }catch(e){ appendLog('failed to load players: '+e.message,'error'); }
+}
+async function playerAction(name, action, reason){
+  try{
+    await api('/api/players/action',{ method:'POST', body:JSON.stringify({ name, action, reason }) });
+    appendLog(`${action} → ${name}`,'warn');
+    setTimeout(loadPlayers, 800);
+  }catch(e){
+    appendLog('player action failed: '+e.message,'error');
+  }
+}
+document.getElementById('pm-go').onclick=()=>{
+  const name=document.getElementById('pm-name').value.trim();
+  const action=document.getElementById('pm-action').value;
+  if(!name) return;
+  playerAction(name, action);
+  document.getElementById('pm-name').value='';
+};
+
+let ws;
+function connectWs(){
+  const proto=location.protocol==='https:'?'wss':'ws';
+  ws=new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen=()=>{ document.getElementById('ws-status').textContent='ws: ok'; };
+  ws.onclose=()=>{
+    document.getElementById('ws-status').textContent='ws: reconnect…';
+    setTimeout(connectWs,2000);
+  };
+  ws.onmessage=(ev)=>{
+    try{
+      const msg=JSON.parse(ev.data);
+      if(msg.type==='status') applyStatus(msg);
+      else if(msg.type==='players') renderPlayers(msg);
+      else if(msg.line!=null) appendLog(msg.line, msg.type||'info', msg.time);
+    }catch{}
+  };
+}
+
+async function api(path, opts={}){
+  const r=await fetch(path,{
+    headers:{'Content-Type':'application/json',...(opts.headers||{})},
+    ...opts
+  });
+  const text=await r.text();
+  let data={};
+  try{ data=JSON.parse(text);}catch{ data={ raw:text }; }
+  if(!r.ok) throw Object.assign(new Error(data.error||r.statusText),{ status:r.status, data });
+  return data;
+}
+
+document.getElementById('btn-start').onclick=async()=>{
+  BootConsole.open('online');
+  appendLog('starting…','cmd');
+  try{
+    await api('/api/server/start',{
+      method:'POST',
+      body:JSON.stringify({ version:selectedVersion, loader:selectedLoader })
+    });
+  }catch(e){
+    appendLog('start failed: '+(e.message||e),'error');
+    if(e.status===401) appendLog('login required — use Discord or window.__bypass=true','error');
+  }
+};
+document.getElementById('btn-stop').onclick=()=>api('/api/server/stop',{method:'POST'}).catch(e=>appendLog(e.message,'error'));
+document.getElementById('btn-restart').onclick=()=>api('/api/server/restart',{method:'POST'}).catch(e=>appendLog(e.message,'error'));
+
+function sendCmd(){
+  const v=document.getElementById('cmd-input').value.trim();
+  if(!v) return;
+  if(ws&&ws.readyState===1) ws.send(JSON.stringify({ type:'command', cmd:v }));
+  else api('/api/server/command',{ method:'POST', body:JSON.stringify({ cmd:v }) }).catch(()=>{});
+  document.getElementById('cmd-input').value='';
+}
+document.getElementById('cmd-send').onclick=sendCmd;
+document.getElementById('cmd-input').onkeydown=e=>{ if(e.key==='Enter') sendCmd(); };
+
+/* ---------- mods: real progress + confirmed installs ---------- */
+const dz=document.getElementById('dropzone');
+const fi=document.getElementById('mod-file');
+dz.onclick=()=>fi.click();
+dz.ondragover=e=>{ e.preventDefault(); dz.classList.add('drag'); };
+dz.ondragleave=()=>dz.classList.remove('drag');
+dz.ondrop=async e=>{
+  e.preventDefault(); dz.classList.remove('drag');
+  await uploadFiles(e.dataTransfer.files);
+};
+fi.onchange=()=>{ uploadFiles(fi.files); fi.value=''; };
+
+function uploadOne(file){
+  return new Promise(resolve=>{
+    const card=document.createElement('div');
+    card.className='upload-card';
+    card.innerHTML=`<div class="name">${escapeHtml(file.name)}</div>
+      <div class="progress-track"><div class="progress-fill"></div></div>
+      <div class="status">uploading…</div>`;
+    document.getElementById('upload-list').appendChild(card);
+    const fill=card.querySelector('.progress-fill');
+    const status=card.querySelector('.status');
+
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST','/api/mods/upload?name='+encodeURIComponent(file.name));
+    xhr.setRequestHeader('Content-Type','application/octet-stream');
+    xhr.upload.onprogress=e=>{
+      if(e.lengthComputable) fill.style.width=Math.round(e.loaded/e.total*100)+'%';
+    };
+    xhr.onload=()=>{
+      let data={};
+      try{ data=JSON.parse(xhr.responseText); }catch{}
+      const ok = xhr.status>=200 && xhr.status<300 && data.ok;
+      card.classList.add(ok?'ok':'fail');
+      fill.style.width='100%';
+      status.textContent = ok
+        ? `installed — confirmed on server (${((data.size||file.size)/1024/1024).toFixed(1)} MB)`
+        : 'failed: '+(data.error||('HTTP '+xhr.status));
+      if(ok) recentlyUploaded.add(data.name||file.name);
+      setTimeout(()=>card.remove(), ok?2200:6000);
+      resolve(ok);
+    };
+    xhr.onerror=()=>{
+      card.classList.add('fail');
+      status.textContent='failed: network error (upload may have been too large or connection dropped)';
+      resolve(false);
+    };
+    xhr.send(file);
+  });
+}
+async function uploadFiles(files){
+  let anyOk=false;
+  for(const f of files){
+    const ok=await uploadOne(f);
+    anyOk=anyOk||ok;
+  }
+  if(anyOk) loadMods();
+}
+
+function modCard(m){
+  const isNew=recentlyUploaded.has(m.name);
+  const div=document.createElement('div');
+  div.className='mod-card'+(m.core?' core':'')+(isNew?' new':'');
+  div.innerHTML = m.core
+    ? `<span class="lock" title="locked — part of the optimization pack">🔒</span>
+       <div class="name">${escapeHtml(m.slug||m.name)}</div>
+       <div class="size">${(m.size/1024).toFixed(0)} KB</div>
+       ${m.info?`<div class="props-note" style="font-size:10.5px">${escapeHtml(m.info)}</div>`:''}
+       <div class="badge">✓ core · locked</div>`
+    : `<div class="name">${escapeHtml(m.name)}</div>
+       <div class="size">${(m.size/1024).toFixed(0)} KB</div>
+       <div class="badge">✓ installed</div>
+       <button class="sm danger" data-del="${escapeHtml(m.name)}">remove</button>`;
+  return div;
+}
+
+async function loadMods(){
+  try{
+    const d=await api('/api/mods');
+    const mods=d.mods||[];
+    const core=mods.filter(m=>m.core);
+    const user=mods.filter(m=>!m.core);
+    const coreWrap=document.getElementById('core-mods-wrap');
+    coreWrap.classList.toggle('hidden', core.length===0);
+    const coreGrid=document.getElementById('core-mod-grid');
+    coreGrid.innerHTML='';
+    core.forEach(m=>coreGrid.appendChild(modCard(m)));
+
+    const userGrid=document.getElementById('user-mod-grid');
+    userGrid.innerHTML='';
+    if(user.length===0){
+      userGrid.innerHTML='<div style="color:var(--muted);font-size:var(--fs-sm)">no mods uploaded yet</div>';
+    } else {
+      user.forEach(m=>userGrid.appendChild(modCard(m)));
+    }
+    document.querySelectorAll('#user-mod-grid [data-del]').forEach(b=>{
+      b.onclick=async()=>{
+        b.disabled=true; b.textContent='removing…';
+        try{
+          await api('/api/mods/delete',{ method:'POST', body:JSON.stringify({ name:b.dataset.del }) });
+          loadMods();
+        }catch(e){
+          b.disabled=false; b.textContent='remove';
+          appendLog('remove failed: '+e.message,'error');
+        }
+      };
+    });
+    recentlyUploaded.clear();
+  }catch(e){ appendLog('failed to load mods: '+e.message,'error'); }
+}
+
+async function loadVersions(){
+  try{
+    const d=await api('/api/versions');
+    const sel=document.getElementById('sel-version');
+    sel.innerHTML=(d.versions||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+    if(d.current){ sel.value=d.current; selectedVersion=d.current; }
+    if(d.loader){ document.getElementById('sel-loader').value=d.loader; selectedLoader=d.loader; }
+  }catch{
+    document.getElementById('sel-version').innerHTML=
+      ['1.21.1','1.20.4','1.20.1','1.19.4','1.18.2','1.16.5','1.12.2','1.8.9']
+      .map(v=>`<option value="${v}">${v}</option>`).join('');
+  }
+}
+document.getElementById('btn-apply-version').onclick=()=>{
+  selectedVersion=document.getElementById('sel-version').value;
+  selectedLoader=document.getElementById('sel-loader').value;
+  document.getElementById('cur-version').textContent=`${selectedLoader} ${selectedVersion}`;
+  appendLog(`version set to ${selectedLoader} ${selectedVersion} — press start server`,'success');
+};
+
+async function loadProperties(){
+  try{
+    const d=await api('/api/properties');
+    const p=d.properties||{};
+    if(p.motd!==undefined) document.getElementById('p-motd').value=p.motd;
+    if(p.difficulty) document.getElementById('p-diff').value=p.difficulty;
+    if(p.gamemode) document.getElementById('p-gm').value=p.gamemode;
+    if(p['max-players']) document.getElementById('p-max').value=p['max-players'];
+    document.getElementById('p-online').checked = p['online-mode']!=='false';
+    document.getElementById('p-pvp').checked = p['pvp']!=='false';
+    document.getElementById('p-whitelist').checked = p['white-list']==='true';
+  }catch(e){ appendLog('failed to load properties: '+e.message,'error'); }
+}
+document.getElementById('save-props').onclick=async()=>{
+  const body={
+    motd: document.getElementById('p-motd').value,
+    difficulty: document.getElementById('p-diff').value,
+    gamemode: document.getElementById('p-gm').value,
+    maxPlayers: document.getElementById('p-max').value,
+    onlineMode: document.getElementById('p-online').checked,
+    pvp: document.getElementById('p-pvp').checked,
+    whitelist: document.getElementById('p-whitelist').checked,
+  };
+  try{
+    const r=await api('/api/properties',{ method:'POST', body:JSON.stringify(body) });
+    appendLog('properties saved'+(r.needsRestart?' — restart to fully apply':''),'success');
+  }catch(e){
+    appendLog('save failed: '+e.message,'error');
+  }
+};
+
+/* ---------- first-time setup wizard ---------- */
+let wizStep=1;
+function showWizStep(n){
+  wizStep=n;
+  document.querySelectorAll('.wiz-step').forEach(s=>s.classList.toggle('hidden', parseInt(s.dataset.step)!==n));
+  document.querySelectorAll('.wiz-dot').forEach(d=>d.classList.toggle('active', parseInt(d.dataset.step)<=n));
+  document.getElementById('wiz-back').classList.toggle('hidden', n===1);
+  document.getElementById('wiz-next').classList.toggle('hidden', n===3);
+  document.getElementById('wiz-finish').classList.toggle('hidden', n!==3);
+  if(n===3) updateWizSummary();
+}
+function updateWizSummary(){
+  const loader=document.querySelector('input[name="wiz-loader"]:checked').value;
+  const version=document.getElementById('wiz-version').value;
+  const gamemode=document.getElementById('wiz-gamemode').value;
+  const difficulty=document.getElementById('wiz-difficulty').value;
+  const maxp=document.getElementById('wiz-maxplayers').value;
+  const online=document.getElementById('wiz-online').checked;
+  document.getElementById('wiz-summary').innerHTML=
+    `<b>${escapeHtml(document.getElementById('wiz-name').value||'world')}</b> — ${loader} ${version}<br/>`+
+    `${gamemode}, ${difficulty} difficulty, up to ${maxp} players<br/>`+
+    `online-mode: ${online?'on':'off'}`;
+}
+document.getElementById('wiz-next').onclick=()=>showWizStep(Math.min(3,wizStep+1));
+document.getElementById('wiz-back').onclick=()=>showWizStep(Math.max(1,wizStep-1));
+document.getElementById('wiz-finish').onclick=async()=>{
+  const btn=document.getElementById('wiz-finish');
+  btn.disabled=true; btn.textContent='creating…';
+  BootConsole.open('online');   // live launch feed while the machine + Minecraft boot
+  await setupResolved;          // if the Codespace says this account already has a world, don't overwrite it
+  if(setupComplete){ BootConsole.close(); return; }
+  const body={
+    worldName: document.getElementById('wiz-name').value,
+    version: document.getElementById('wiz-version').value,
+    loader: document.querySelector('input[name="wiz-loader"]:checked').value,
+    gamemode: document.getElementById('wiz-gamemode').value,
+    difficulty: document.getElementById('wiz-difficulty').value,
+    maxPlayers: document.getElementById('wiz-maxplayers').value,
+    onlineMode: document.getElementById('wiz-online').checked,
+    motd: document.getElementById('wiz-motd').value,
+  };
+  try{
+    await api('/api/profile/setup',{ method:'POST', body:JSON.stringify(body) });
+    setupComplete=true;
+    document.getElementById('wizard').classList.add('hidden');
+    selectedVersion=body.version; selectedLoader=body.loader;
+    BootConsole.real('world settings saved','ok');
+    initDashboard();
+    if(AUTO_LAUNCH_AFTER_SETUP){
+      BootConsole.real('sending the start command to Minecraft…','info');
+      appendLog('starting…','cmd');
+      api('/api/server/start',{ method:'POST', body:JSON.stringify({ version:selectedVersion, loader:selectedLoader }) })
+        .catch(e=>appendLog('start failed: '+(e.message||e),'error'));
+    }
+  }catch(e){
+    btn.disabled=false; btn.textContent='create world';
+    appendLog('setup failed: '+e.message,'error');
+  }
+};
+async function maybeShowWizard(){
+  if(setupComplete) return false;
+  const sel=document.getElementById('wiz-version');
+  if(!sel.options.length){
+    try{
+      const d=await api('/__bismuth/versions');
+      sel.innerHTML=(d.versions||['1.21.1']).map(v=>`<option value="${v}">${v}</option>`).join('');
+    }catch{
+      sel.innerHTML='<option value="1.21.1">1.21.1</option>';
+    }
+  }
+  showWizStep(1);
+  document.getElementById('wizard').classList.remove('hidden');
+  return true;
+}
+
+async function initDashboard(){
+  connectWs();
+  loadMods();
+  loadVersions();
+  loadProperties();
+  loadPlayers();
+  try{ applyStatus(await api('/api/status')); }catch{}
+}
+
+(async()=>{
+  if(await checkAuth()){
+    if(setupUnknown) resolveSetupInBackground();
+    const showedWizard = await maybeShowWizard();
+    if(!showedWizard) initDashboard();
+  }
+})();
+</script>
+</body>
+</html>

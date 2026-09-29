@@ -1,0 +1,46 @@
+name = "bismuth-gateway"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# The landing page (/) and the dashboard shell (/app) are static files served
+# straight from Cloudflare's edge: instant, and they never wake the Codespace.
+# (Cloudflare serves public/app.html at /app automatically.)
+[assets]
+directory = "./public"
+
+[vars]
+# DOMAIN-FREE by default: the Codespace runs a free Cloudflare quick tunnel and publishes its
+# address through the GitHub API; this Worker reads it back. Nothing to configure here.
+#
+# ONLY if you own a domain on Cloudflare and use a named tunnel, uncomment this
+# (a Public Hostname on the tunnel, service HTTP -> localhost:3000, and a DIFFERENT name
+# from the address people visit):
+# TUNNEL_HOSTNAME = "origin.yourdomain.com"
+
+# CODESPACE_REPO is still needed — the Worker uses it only to find + wake the
+# Codespace via the GitHub API. It is NOT used for the origin/proxy URL anymore.
+# The Worker finds the newest Codespace of this repo automatically, so
+# re-creating the Codespace (new random name) never breaks anything.
+CODESPACE_REPO = "parallelwaves/bismuthtech"
+
+# Optional: pin a specific Codespace name instead of auto-discovering by repo.
+# CODESPACE_NAME = "miniature-journey-r7p4jx7q4r94c59j5"
+
+DISCORD_CLIENT_ID = "PUT_YOUR_DISCORD_CLIENT_ID_HERE"
+
+# Secrets — set with `npx wrangler secret put <NAME>`, never put them in this file:
+#   GH_TOKEN               classic GitHub PAT with the `codespace` scope (wake + state)
+#   DISCORD_CLIENT_SECRET  from the Discord developer portal
+#   GATEWAY_SECRET         random 32+ chars (`openssl rand -hex 32`);
+#                          the SAME value must be set in the Codespace as GATEWAY_SECRET
+#
+# In the Codespace (GitHub Codespaces Secrets), not here: GATEWAY_SECRET (same value) and
+# CS_CONTROL_TOKEN (same PAT as GH_TOKEN).
+
+# Optional: a friendly public address for the site (domain must be on Cloudflare).
+# Without this you get https://bismuth-gateway.<your-subdomain>.workers.dev
+# IMPORTANT: this must be a DIFFERENT hostname from TUNNEL_HOSTNAME above.
+# (site = bismuth.yourdomain.com, tunnel origin = origin.yourdomain.com)
+# routes = [
+#   { pattern = "bismuth.yourdomain.com", custom_domain = true }
+# ]

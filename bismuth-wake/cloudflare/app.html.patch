@@ -1,0 +1,434 @@
+--- a/public/app.html
++++ b/public/app.html
+@@ -515,6 +515,355 @@
+ let selectedLoader = 'fabric';
+ let user = null;
+ let setupComplete = false;
++
++/* ============================================================================
++   Bismuth gateway (Cloudflare) — wake the server early and wait for it patiently
++   ----------------------------------------------------------------------------
++   This page is served by Cloudflare, so it loads instantly even while the
++   Codespace is asleep. Opening it counts as "deploy": we ask the Worker to start
++   the Codespace right away — before login, while the user fills the wizard.
++   API calls that arrive while the machine is still booting are transparently
++   retried, and a live "launch console" keeps the screen moving while they wait.
++   ========================================================================== */
++const AUTO_LAUNCH_AFTER_SETUP = true;   // start Minecraft right after the first-time wizard
++const __rawFetch = window.fetch.bind(window);
++let __lastWake = 0, __waiting = 0;
++
++function __wake(){
++  if(Date.now() - __lastWake < 20000) return;
++  __lastWake = Date.now();
++  try{
++    __rawFetch('/__bismuth/wake', { method:'POST', keepalive:true })
++      .then(r => r.json())
++      .then(w => {
++        if(w && w.started) BootConsole.real('wake-up call accepted by GitHub','ok');
++        if(w && w.error === 'billing') BootConsole.real('GitHub Codespaces spending limit reached — cannot start the machine','err');
++        else if(w && w.error) BootConsole.real('could not start the machine ('+w.error+')','err');
++      })
++      .catch(()=>{});
++  }catch(e){}
++}
++
++window.fetch = async function(input, init){
++  const url = typeof input === 'string' ? input : ((input && input.url) || '');
++  if(!/^\/api\//.test(url)) return __rawFetch(input, init);
++  const t0 = Date.now();
++  let counted = false;
++  try{
++    for(;;){
++      const r = await __rawFetch(input, init);
++      if(!(r.status === 503 && r.headers.get('X-Bismuth-Asleep') === '1')) return r;
++      if(!counted){ counted = true; __waiting++; BootConsole.open('ready'); }
++      __wake();
++      if(Date.now() - t0 > 240000) return r;
++      await new Promise(res => setTimeout(res, 2500));
++    }
++  } finally {
++    if(counted) __waiting--;
++  }
++};
++
++let setupUnknown = false;          // true while the Codespace hasn't told us yet whether this account finished setup
++let setupResolved = Promise.resolve();
++function resolveSetupInBackground(){
++  setupResolved = (async()=>{
++    for(let i = 0; i < 120; i++){
++      await new Promise(r => setTimeout(r, 2500));
++      try{
++        const r = await __rawFetch('/api/me');
++        const d = await r.json();
++        if(typeof d.setupComplete === 'boolean'){
++          setupUnknown = false;
++          if(d.setupComplete){
++            setupComplete = true;
++            const w = document.getElementById('wizard');
++            if(!w.classList.contains('hidden')){
++              w.classList.add('hidden');
++              BootConsole.close();
++              appendLog('existing world found — using your saved settings','info');
++              initDashboard();
++            }
++          }
++          return;
++        }
++      }catch{}
++    }
++  })();
++}
++
++/* ============================================================================
++   Launch console — a live feed shown while the machine / Minecraft boot
++   ----------------------------------------------------------------------------
++   Two kinds of lines:
++     REAL lines   (● ✓ ✗ ›)  come from actual events: machine state from the
++                             Worker, and Minecraft's own console output.
++     FLAVOR lines (~)        are PLACEHOLDERS that fill the quiet gaps so the
++                             screen never freezes. They don't claim anything
++                             technical. Swap them for real hooks whenever you like.
++   >>> To change what the feed says, edit BOOT_FLAVOR and BOOT_TIPS below. <<<
++   ========================================================================== */
++const BOOT_FLAVOR = {
++  cloud: [
++    'asking the cloud very nicely for a machine…',
++    'waking the hamsters that power the servers…',
++    'unrolling a long extension cord to the datacenter…',
++    'polishing the CPU (it likes that)…',
++    'reticulating splines…',
++    'checking the weather in the cloud… it is cloudy',
++  ],
++  engine: [
++    'sorting the redstone by colour…',
++    'teaching the dashboard your name…',
++    'warming up the Bismuth engine…',
++    'stacking the item frames…',
++    'sharpening the pickaxes…',
++  ],
++  world: [
++    'unpacking the world seed…',
++    'counting creepers… there are too many',
++    'teaching the cows to spawn politely…',
++    'placing the bedrock, layer by layer…',
++    'hiding diamonds somewhere deep…',
++    'asking the villagers to please stop wandering off…',
++    'letting the sheep choose their colours…',
++  ],
++};
++const BOOT_TIPS = [
++  'tip: once the server is up you can type Minecraft commands straight into the console',
++  'tip: the server sleeps by itself 2 minutes after the last player leaves',
++  'tip: the Mods tab is where performance mods go',
++  'tip: pick a different version any time from the Version tab',
++];
++
++const BootConsole = (function(){
++  const PHASES = [
++    { id:'cloud',  label:'cloud machine',  from:0,  to:42, tau:45 },
++    { id:'engine', label:'bismuth engine', from:42, to:58, tau:8  },
++    { id:'world',  label:'minecraft',      from:58, to:97, tau:70 },
++  ];
++  const S = { open:false };
++
++  function h(tag, cls, text){
++    const e = document.createElement(tag);
++    if(cls) e.className = cls;
++    if(text != null) e.textContent = text;
++    return e;
++  }
++  function fmt(sec){ sec = Math.max(0, Math.round(sec)); return Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0'); }
++
++  function addCss(){
++    if(document.getElementById('bm-boot-css')) return;
++    const s = document.createElement('style');
++    s.id = 'bm-boot-css';
++    s.textContent = `
++      .bm-boot{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(8,8,9,.88);backdrop-filter:blur(6px);font-family:var(--font,ui-monospace,monospace)}
++      .bm-card{width:100%;max-width:580px;background:var(--surface,#0d0d0f);color:var(--text,#e4e4e6);border:1px solid var(--border,#212124);padding:20px 20px 16px}
++      .bm-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
++      .bm-title{font-weight:600;font-size:15px}
++      .bm-hide{background:none;border:1px solid var(--border,#212124);color:var(--muted,#86868c);font:inherit;font-size:11px;padding:3px 9px;cursor:pointer}
++      .bm-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
++      .bm-chip{font-size:11px;padding:3px 9px;border:1px solid var(--border,#212124);color:var(--muted,#86868c)}
++      .bm-chip.active{color:var(--text,#e4e4e6);border-color:var(--accent,#c0f242);animation:bmPulse 1.2s ease-in-out infinite}
++      .bm-chip.done{color:var(--accent,#c0f242);border-color:var(--accent,#c0f242)}
++      .bm-bar{height:3px;background:var(--border,#212124);margin-bottom:8px;overflow:hidden}
++      .bm-fill{height:100%;width:0;background:var(--accent,#c0f242);transition:width .35s ease-out}
++      .bm-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted,#86868c);margin-bottom:10px}
++      .bm-feed{height:230px;overflow:hidden;font-size:12px;line-height:1.65;border-top:1px solid var(--border,#212124);padding-top:10px}
++      .bm-l{display:flex;gap:8px;animation:bmIn .35s ease-out;white-space:pre-wrap;word-break:break-word}
++      .bm-t{color:var(--muted,#86868c);flex:none;min-width:38px;text-align:right}
++      .bm-g{flex:none;width:10px}
++      .bm-flavor{color:var(--muted,#86868c)}
++      .bm-tip{color:var(--muted,#86868c);font-style:italic}
++      .bm-ok .bm-g,.bm-ok .bm-m{color:var(--accent,#c0f242)}
++      .bm-info .bm-g{color:var(--accent,#c0f242)}
++      .bm-warn .bm-m,.bm-warn .bm-g{color:#e6b450}
++      .bm-err .bm-m,.bm-err .bm-g{color:#ff6b6b}
++      .bm-cur{display:inline-block;width:7px;height:13px;background:var(--accent,#c0f242);vertical-align:-2px;animation:bmBlink 1s steps(1) infinite}
++      @keyframes bmIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
++      @keyframes bmPulse{50%{opacity:.45}}
++      @keyframes bmBlink{50%{opacity:0}}`;
++    document.head.appendChild(s);
++  }
++
++  function build(){
++    addCss();
++    const root = h('div','bm-boot'); root.id = 'bm-boot';
++    const card = h('div','bm-card');
++    const head = h('div','bm-head');
++    head.appendChild(h('span','bm-title','Launching your server'));
++    const hide = h('button','bm-hide','hide'); hide.onclick = () => close();
++    head.appendChild(hide);
++    const chips = h('div','bm-chips');
++    const chipEls = PHASES.map(p => { const c = h('span','bm-chip',p.label); chips.appendChild(c); return c; });
++    const bar = h('div','bm-bar'); const fill = h('div','bm-fill'); bar.appendChild(fill);
++    const meta = h('div','bm-meta');
++    const clock = h('span','','0:00');
++    meta.appendChild(clock);
++    meta.appendChild(h('span','','usually 1–3 minutes'));
++    const feed = h('div','bm-feed');
++    card.appendChild(head); card.appendChild(chips); card.appendChild(bar); card.appendChild(meta); card.appendChild(feed);
++    root.appendChild(card);
++    document.body.appendChild(root);
++    S.els = { root, fill, clock, feed, chipEls };
++  }
++
++  function line(text, kind){
++    if(!S.open || !S.els) return;
++    const sec = Math.round((Date.now() - S.t0) / 1000);
++    const glyph = { ok:'✓', err:'✗', mc:'›', flavor:'~', tip:'~', info:'●', warn:'!' }[kind] || '●';
++    const row = h('div','bm-l bm-' + kind);
++    row.appendChild(h('span','bm-t','+' + sec + 's'));
++    row.appendChild(h('span','bm-g',glyph));
++    row.appendChild(h('span','bm-m',String(text)));
++    const f = S.els.feed;
++    f.appendChild(row);
++    while(f.children.length > 40) f.removeChild(f.firstChild);
++    f.scrollTop = f.scrollHeight;
++    S.lastAt = Date.now();
++    S.nextGap = 1000 + Math.random() * 1500;
++  }
++
++  function flavor(){
++    S.n++;
++    const isTip = S.n % 5 === 0;
++    const key = isTip ? 'tip' : PHASES[S.phase].id;
++    const pool = isTip ? BOOT_TIPS : BOOT_FLAVOR[key];
++    const i = (S.cursor[key] = (S.cursor[key] == null ? Math.floor(Math.random() * pool.length) : S.cursor[key] + 1)) % pool.length;
++    line(pool[i], isTip ? 'tip' : 'flavor');
++  }
++
++  function setPhase(i){
++    if(!S.open || i <= S.phase) return;
++    S.phase = i;
++    S.pStart = Date.now();
++    S.pct = Math.max(S.pct, PHASES[i].from);
++  }
++
++  function render(){
++    const now = Date.now();
++    const p = PHASES[S.phase];
++    if(!S.done && !S.failed){
++      const target = p.from + (p.to - p.from) * (1 - Math.exp(-(now - S.pStart) / 1000 / p.tau));
++      S.pct = Math.max(S.pct, Math.min(target, p.to - 0.5));
++    }
++    S.els.fill.style.width = S.pct.toFixed(1) + '%';
++    S.els.clock.textContent = fmt((now - S.t0) / 1000);
++    S.els.chipEls.forEach((c, i) => {
++      c.className = 'bm-chip' + (S.done || i < S.phase ? ' done' : i === S.phase && !S.failed ? ' active' : '');
++    });
++  }
++
++  function tick(){
++    if(!S.open) return;
++    render();
++    if(S.done || S.failed) return;
++    const now = Date.now();
++    if(now - S.lastAt > S.nextGap) flavor();
++    if(!S.slowShown && now - S.t0 > 360000){
++      S.slowShown = true;
++      line('taking longer than usual — see "Getting the logs" in the README','warn');
++    }
++  }
++
++  function describe(s){
++    const st = s.state;
++    if(st === 'Shutdown') return line('cloud machine is asleep — sending the wake-up call','info');
++    if(st === 'ShuttingDown') return line('machine is still shutting down from earlier — waiting for it to finish','info');
++    if(st === 'NotFound') { S.failed = true; return line('Codespace not found — check CODESPACE_NAME / CODESPACE_REPO on the Worker','err'); }
++    if(st === 'AuthError') { S.failed = true; return line('GitHub rejected the token — check GH_TOKEN on the Worker','err'); }
++    if(['Failed','Deleted','Archived','Moved'].includes(st)) { S.failed = true; return line('Codespace is ' + String(st).toLowerCase() + ' — open GitHub → Codespaces to check it','err'); }
++    if(st === 'Available' && !s.ready){
++      if(s.reason === 'app_starting') line('waiting for the Cloudflare tunnel to connect…','info');
++      line('cloud machine is online','ok');
++      return line('starting the Bismuth engine…','info');
++    }
++    return line('cloud machine is booting…','info');
++  }
++
++  async function poll(){
++    if(!S.open || S.phase >= 2 || S.polling) return;
++    S.polling = true;
++    try{
++      const r = await __rawFetch('/__bismuth/status', { cache:'no-store' });
++      const s = await r.json();
++      if(!S.open) return;
++      const key = s.state + '|' + (s.ready ? 'ready' : (s.reason || ''));
++      if(key !== S.machine){ S.machine = key; if(!s.ready) describe(s); }
++      if(s.state === 'Available' && !s.ready) setPhase(1);
++      if(s.ready){
++        line('cloud machine online','ok');
++        line('Bismuth engine is answering','ok');
++        setPhase(2);
++        if(S.goal === 'ready') finish('ready');
++      }
++    }catch(e){ /* try again on the next poll */ }
++    finally{ S.polling = false; }
++  }
++
++  function finish(msg){
++    if(S.done) return;
++    S.done = true;
++    S.pct = 100;
++    line(msg, 'ok');
++    render();
++    S.closeTimer = setTimeout(close, 1400);
++  }
++
++  function open(goal){
++    if(S.open){ if(goal === 'online') S.goal = 'online'; return; }
++    Object.assign(S, { open:true, goal, phase:0, t0:Date.now(), pStart:Date.now(), pct:0, lastAt:Date.now(), nextGap:900,
++                       n:0, cursor:{}, machine:'', done:false, failed:false, slowShown:false, polling:false,
++                       mcCount:0, mcWindow:0, firstStatus:true, startedMC:false, closeTimer:null });
++    build();
++    line('launch sequence started','info');
++    render();
++    S.timer = setInterval(tick, 250);
++    S.pollTimer = setInterval(poll, 2500);
++    poll();
++  }
++
++  function close(){
++    if(!S.open) return;
++    S.open = false;
++    clearInterval(S.timer); clearInterval(S.pollTimer); clearTimeout(S.closeTimer);
++    if(S.els && S.els.root) S.els.root.remove();
++    S.els = null;
++  }
++
++  // Minecraft's own console lines (called from appendLog)
++  function mc(text, type){
++    if(!S.open || S.done) return;
++    text = String(text || '').trim();
++    if(!text) return;
++    const now = Date.now();
++    if(now - S.mcWindow > 1000){ S.mcWindow = now; S.mcCount = 0; }
++    const isErr = type === 'error';
++    if(++S.mcCount <= 8 || isErr){
++      line(text, isErr ? 'err' : type === 'warn' ? 'warn' : 'mc');
++    }
++    if(S.goal === 'online' && S.phase < 2) setPhase(2);
++    if(isErr) S.failed = true;
++    if(S.goal === 'online' && /Done \(\d/.test(text)) finish('server online — enjoy!');
++  }
++
++  // Status snapshots from the WebSocket (called from applyStatus)
++  function status(st){
++    if(!S.open || S.done || S.goal !== 'online') return;
++    if(S.firstStatus){
++      S.firstStatus = false;
++      if(st.running && (st.uptime || 0) > 30){ finish('your server is already online'); return; }
++    }
++    if(st.running && !S.startedMC){
++      S.startedMC = true;
++      line('Minecraft process started','ok');
++      setPhase(2);
++    }
++  }
++
++  return { open, close, real:(t,k)=>line(t, k || 'info'), mc, status, isOpen:()=>S.open, _state:S };
++})();
++
++__wake();   // opening the dashboard = "deploy": start booting now, even before login
+ const recentlyUploaded = new Set();
+ 
+ /* ---------- charts: deeper stroke, glow, gradient fill ---------- */
+@@ -611,7 +960,8 @@
+     if(user){
+       document.getElementById('gate').classList.add('hidden');
+       document.getElementById('user-label').textContent=user.global_name||user.username;
+-      setupComplete = !!d.setupComplete;
++      setupUnknown = (d.setupComplete === null || d.setupComplete === undefined);
++      setupComplete = setupUnknown ? false : !!d.setupComplete;
+       return true;
+     }
+   }catch{}
+@@ -633,6 +983,7 @@
+ 
+ function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+ function appendLog(line,type='info',time){
++  if(BootConsole.isOpen()) BootConsole.mc(line,type);
+   const ts = time || new Date().toTimeString().slice(0,8);
+   const html=`<div class="line ${type}"><span class="ts">${ts}</span><span>${escapeHtml(line)}</span></div>`;
+   const full=document.getElementById('full-console');
+@@ -653,6 +1004,7 @@
+ }
+ 
+ function applyStatus(st){
++  BootConsole.status(st);
+   const on=!!st.running;
+   const mine = on && user && st.ownerName && (user.global_name||user.username)===st.ownerName;
+   const blocked = on && !mine && !window.__bypass;
+@@ -791,6 +1143,7 @@
+ }
+ 
+ document.getElementById('btn-start').onclick=async()=>{
++  BootConsole.open('online');
+   appendLog('starting…','cmd');
+   try{
+     await api('/api/server/start',{
+@@ -1005,6 +1358,9 @@
+ document.getElementById('wiz-finish').onclick=async()=>{
+   const btn=document.getElementById('wiz-finish');
+   btn.disabled=true; btn.textContent='creating…';
++  BootConsole.open('online');   // live launch feed while the machine + Minecraft boot
++  await setupResolved;          // if the Codespace says this account already has a world, don't overwrite it
++  if(setupComplete){ BootConsole.close(); return; }
+   const body={
+     worldName: document.getElementById('wiz-name').value,
+     version: document.getElementById('wiz-version').value,
+@@ -1020,7 +1376,14 @@
+     setupComplete=true;
+     document.getElementById('wizard').classList.add('hidden');
+     selectedVersion=body.version; selectedLoader=body.loader;
++    BootConsole.real('world settings saved','ok');
+     initDashboard();
++    if(AUTO_LAUNCH_AFTER_SETUP){
++      BootConsole.real('sending the start command to Minecraft…','info');
++      appendLog('starting…','cmd');
++      api('/api/server/start',{ method:'POST', body:JSON.stringify({ version:selectedVersion, loader:selectedLoader }) })
++        .catch(e=>appendLog('start failed: '+(e.message||e),'error'));
++    }
+   }catch(e){
+     btn.disabled=false; btn.textContent='create world';
+     appendLog('setup failed: '+e.message,'error');
+@@ -1031,7 +1394,7 @@
+   const sel=document.getElementById('wiz-version');
+   if(!sel.options.length){
+     try{
+-      const d=await api('/api/versions');
++      const d=await api('/__bismuth/versions');
+       sel.innerHTML=(d.versions||['1.21.1']).map(v=>`<option value="${v}">${v}</option>`).join('');
+     }catch{
+       sel.innerHTML='<option value="1.21.1">1.21.1</option>';
+@@ -1053,6 +1416,7 @@
+ 
+ (async()=>{
+   if(await checkAuth()){
++    if(setupUnknown) resolveSetupInBackground();
+     const showedWizard = await maybeShowWizard();
+     if(!showedWizard) initDashboard();
+   }

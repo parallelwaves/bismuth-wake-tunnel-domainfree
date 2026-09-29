@@ -1,0 +1,36 @@
+{
+  "name": "Bismuth Minecraft",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21"
+    }
+  },
+  "forwardPorts": [
+    25565
+  ],
+  "portsAttributes": {
+    "25565": {
+      "label": "Minecraft",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "npm install && mkdir -p minecraft/mods scripts",
+  "postStartCommand": "bash scripts/autostart.sh",
+  "secrets": {
+    "TUNNEL_TOKEN": {
+      "description": "OPTIONAL - leave blank if you have no domain. Only for a named Cloudflare Tunnel (needs a domain on Cloudflare)."
+    },
+    "CS_CONTROL_TOKEN": {
+      "description": "Classic GitHub PAT with the 'codespace' scope (same one as the Worker's GH_TOKEN). Lets the Codespace publish its tunnel address and stop itself when idle."
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "remoteUser": "node"
+}

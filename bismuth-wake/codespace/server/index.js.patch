@@ -1,0 +1,74 @@
+--- a/server/index.js
++++ b/server/index.js
+@@ -11,6 +11,8 @@
+ import dotenv from 'dotenv';
+ import fetch from 'node-fetch';
+ import os from 'os';
++import { createLifecycle } from './lifecycle.js';
++import { createGatewayAuth } from './gateway-auth.js';
+ 
+ dotenv.config();
+ 
+@@ -69,7 +71,9 @@
+ const app = express();
+ app.set('trust proxy', 1); // Codespaces/GH proxy sits in front of us — needed so req.protocol reflects the real https scheme
+ const server = createServer(app);
+-const wss = new WebSocketServer({ server, path: '/ws' });
++// verifyClient: in gateway mode (GATEWAY_SECRET set) the WebSocket requires the
++// Worker's signed identity header, so strangers can't read the console or run commands.
++const wss = new WebSocketServer({ server, path: '/ws', verifyClient: (info, cb) => gateway.verifyWsClient(info, cb) });
+ 
+ const state = {
+   running: false,
+@@ -192,6 +196,19 @@
+   return `${proto}://${host}/auth/discord/callback`;
+ }
+ 
++// Codespace wake-up bridge (see server/lifecycle.js + server/gateway-auth.js):
++//  - lifecycle: tags responses with X-Bismuth, tracks activity, optional self-stop
++//  - gateway:   accepts the Cloudflare Worker's signed Discord identity
++// Neither changes the 120 s Minecraft idle timer.
++const lifecycle = createLifecycle({
++  isBusy: () => state.running || state.tunnelRunning || state.onlinePlayers.size > 0,
++  log: logTerminal,
++  keepAwakeFile: path.join(ROOT, '.keep-awake'),
++});
++const gateway = createGatewayAuth();
++app.use(lifecycle.middleware);
++app.use(gateway.middleware);
++
+ app.use(cookieParser());
+ 
+ // File-backed sessions so logging in once actually sticks. The old version
+@@ -202,7 +219,7 @@
+ // the same Codespace (and the same SESSION_SECRET) sticks around.
+ const FileStore = FileStoreFactory(session);
+ const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+-app.use(
++const sessionMiddleware = (
+   session({
+     store: new FileStore({ path: SESSIONS_DIR, ttl: SESSION_MAX_AGE_MS / 1000, retries: 0, logFn: () => {} }),
+     secret: process.env.SESSION_SECRET || 'bismuth-dev-secret-change-me',
+@@ -211,6 +228,8 @@
+     cookie: { secure: false, maxAge: SESSION_MAX_AGE_MS },
+   })
+ );
++// Requests already authenticated by the gateway skip the cookie session.
++app.use((req, res, next) => (req.gatewayAuthed ? next() : sessionMiddleware(req, res, next)));
+ app.use(express.json({ limit: '5mb' }));
+ app.use(express.static(path.join(ROOT, 'public')));
+ 
+@@ -1127,6 +1146,7 @@
+   ws.send(JSON.stringify({ type: 'players', ...getPlayersSnapshot(state.mcDir || mcDirFor('shared')) }));
+   state.consoleBuffer.slice(-100).forEach((e) => ws.send(JSON.stringify({ type: 'log', ...e })));
+   ws.on('message', (raw) => {
++    lifecycle.touch();
+     try {
+       const msg = JSON.parse(raw.toString());
+       if (msg.type === 'command' && msg.cmd) sendCommand(msg.cmd);
+@@ -1181,4 +1201,5 @@
+ server.listen(PORT, process.env.HOST || '0.0.0.0', () => {
+   logTerminal(`listening on http://0.0.0.0:${PORT}`);
+   pushLog('Bismuth backend ready', 'success');
++  lifecycle.start();
+ });
